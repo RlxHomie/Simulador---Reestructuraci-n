@@ -56,7 +56,7 @@ function generarFolioRandom() {
  ***************************************************************************************/
 const GoogleSheetsModule = (function() {
   // Pega aquí la URL de tu despliegue de Google Apps Script:
-  const GOOGLE_SHEET_ENDPOINT = "https://script.google.com/macros/s/AKfycbwXXXXXXXXXXXXXXX/exec";
+  const GOOGLE_SHEET_ENDPOINT = "https://script.google.com/macros/s/AKfycbwKkIakj8f7EegwblR5cBozJY8kCAFIpHIdhEqhBCGY81nBs3nGZBAXTsnk-OCNpnKB/exec";
 
   let entidades = [];
   let tiposProducto = [];
