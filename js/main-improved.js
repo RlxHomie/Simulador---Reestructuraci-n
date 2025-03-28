@@ -89,7 +89,7 @@ function toggleCargando(mostrar, mensaje = "Procesando...") {
 const GoogleSheetsModule = (function() {
   // URL del script de Google Apps Script
   // Esta URL debe ser actualizada con la URL real del script desplegado
-  const GOOGLE_SHEET_ENDPOINT = "https://script.google.com/macros/s/AKfycbxaMExPM2bFvoSoExti5kvl5BNRrNPuxOu6L5VAA0UgU3djnikrDSx3yn7RLWrFlKil/exec";
+  const GOOGLE_SHEET_ENDPOINT = "https://script.google.com/macros/s/AKfycbwKkIakj8f7EegwblR5cBozJY8kCAFIpHIdhEqhBCGY81nBs3nGZBAXTsnk-OCNpnKB/exec";
   
   // Variables para almacenar datos cargados
   let entidades = [];
