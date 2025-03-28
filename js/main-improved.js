@@ -1,22 +1,12 @@
 /***************************************************************************************
- * utils.js
+ * 1. UTILS MODULE
  ***************************************************************************************/
-// Función de debounce
-function debounce(func, wait) {
-  let timeout;
-  return function(...args) {
-    clearTimeout(timeout);
-    timeout = setTimeout(() => func.apply(this, args), wait);
-  };
-}
-
-// Notificaciones con animación
 function mostrarNotificacion(mensaje, tipo = "info") {
-  // Eliminar notificaciones anteriores
-  const notificacionesAnteriores = document.querySelectorAll('.notificacion');
-  notificacionesAnteriores.forEach(notif => {
-    notif.classList.add("fadeOut");
-    setTimeout(() => notif.remove(), 500);
+  // Eliminar notificaciones previas
+  const notificaciones = document.querySelectorAll('.notificacion');
+  notificaciones.forEach(n => {
+    n.classList.add("fadeOut");
+    setTimeout(() => n.remove(), 300);
   });
 
   const notif = document.createElement("div");
@@ -24,455 +14,563 @@ function mostrarNotificacion(mensaje, tipo = "info") {
   notif.textContent = mensaje;
   document.body.appendChild(notif);
 
-  // Añadir efecto de entrada
   setTimeout(() => {
     notif.style.transform = "translateY(0)";
     notif.style.opacity = "1";
   }, 10);
 
-  // Configurar temporizador para eliminar
   setTimeout(() => {
     notif.classList.add("fadeOut");
-    setTimeout(() => notif.remove(), 500);
+    setTimeout(() => notif.remove(), 300);
   }, 4000);
 }
 
-// Validar DNI español
-function validarDNI(dni) {
-  const regex = /^[0-9]{8}[TRWAGMYFPDXBNJZSQVHLCKE]$/i;
-  if (!regex.test(dni)) {
-    return false;
-  }
-  const letra = dni.charAt(8).toUpperCase();
-  const numero = parseInt(dni.substring(0, 8), 10);
-  const letras = 'TRWAGMYFPDXBNJZSQVHLCKE';
-  const letraCalculada = letras.charAt(numero % 23);
-  return letra === letraCalculada;
-}
-
-// Formatear números como moneda (EUR)
-function formatoMoneda(numero) {
-  return new Intl.NumberFormat('es-ES', {
-    style: 'currency',
-    currency: 'EUR',
-    minimumFractionDigits: 2
-  }).format(numero);
-}
-
-// Mostrar/ocultar indicador de carga
-function toggleCargando(mostrar, mensaje = "Procesando...") {
+function toggleCargando(mostrar, msg = "Cargando...") {
   const indicador = document.getElementById("indicadorCarga");
   const mensajeCarga = document.getElementById("mensajeCarga");
   if (!indicador || !mensajeCarga) return;
   if (mostrar) {
-    mensajeCarga.textContent = mensaje;
+    mensajeCarga.textContent = msg;
     indicador.style.display = "flex";
   } else {
     indicador.style.display = "none";
   }
 }
 
+function formatoMoneda(num) {
+  return new Intl.NumberFormat('es-ES', {
+    style: 'currency',
+    currency: 'EUR',
+    minimumFractionDigits: 2
+  }).format(num);
+}
+
+function generarFolioRandom() {
+  // Generar un folio aleatorio, por ejemplo "FOLIO-123456"
+  const randomNum = Math.floor(Math.random() * 900000) + 100000;
+  return "FOLIO-" + randomNum;
+}
+
 /***************************************************************************************
- * GoogleSheetsModule
- * Encargado de comunicar el front con Google Apps Script
+ * 2. GOOGLE SHEETS MODULE
  ***************************************************************************************/
 const GoogleSheetsModule = (function() {
-  // Reemplaza con tu URL de despliegue de la Web App
-  const GOOGLE_SHEET_ENDPOINT = "https://script.google.com/macros/s/AKfycbwKkIakj8f7EegwblR5cBozJY8kCAFIpHIdhEqhBCGY81nBs3nGZBAXTsnk-OCNpnKB/exec";
-  
-  // Datos en memoria
+  // Pega aquí la URL de tu despliegue de Google Apps Script:
+  const GOOGLE_SHEET_ENDPOINT = "https://script.google.com/macros/s/AKfycbwXXXXXXXXXXXXXXX/exec";
+
   let entidades = [];
   let tiposProducto = [];
-  let datosEntidadesCargados = false;
+  let datosCargados = false;
 
-  // Función genérica para POST
-  async function postData(payload, mensajeCargando = "", mensajeExito = "") {
+  async function postData(payload, cargandoMsg = "", exitoMsg = "") {
     try {
-      if (mensajeCargando) {
-        mostrarNotificacion(mensajeCargando, "info");
-        toggleCargando(true, mensajeCargando);
-      }
-
+      toggleCargando(true, cargandoMsg);
       const formData = new FormData();
-      Object.keys(payload).forEach(key => {
-        formData.append(key, payload[key]);
-      });
-
-      const response = await fetch(GOOGLE_SHEET_ENDPOINT, {
+      for (let k in payload) {
+        formData.append(k, payload[k]);
+      }
+      const resp = await fetch(GOOGLE_SHEET_ENDPOINT, {
         method: 'POST',
         body: formData,
         mode: 'cors'
       });
-
       toggleCargando(false);
-
-      if (!response.ok) {
-        throw new Error(`Error HTTP: ${response.status}`);
+      if (!resp.ok) {
+        throw new Error("HTTP Error " + resp.status);
       }
-      const data = await response.json();
-
+      const data = await resp.json();
       if (!data.success) {
-        throw new Error(data.error || "Error desconocido en la respuesta");
+        throw new Error(data.error || "Error desconocido");
       }
-
-      if (mensajeExito) {
-        mostrarNotificacion(mensajeExito, "success");
+      if (exitoMsg) {
+        mostrarNotificacion(exitoMsg, "success");
       }
       return data;
-    } catch (error) {
-      console.error(error);
-      mostrarNotificacion(error.message, "error");
+    } catch (err) {
       toggleCargando(false);
-      throw error;
+      mostrarNotificacion(err.message, "error");
+      throw err;
     }
   }
 
-  // Función genérica para GET
   async function getData(params = {}) {
     try {
-      toggleCargando(true, "Cargando datos...");
+      toggleCargando(true);
       const url = new URL(GOOGLE_SHEET_ENDPOINT);
-      // Agregar parámetros GET
-      Object.keys(params).forEach(key => {
-        url.searchParams.append(key, params[key]);
-      });
-
-      const response = await fetch(url, {
-        method: 'GET',
-        mode: 'cors'
-      });
+      Object.keys(params).forEach(key => url.searchParams.append(key, params[key]));
+      const resp = await fetch(url, { method: 'GET', mode: 'cors' });
       toggleCargando(false);
-
-      if (!response.ok) {
-        throw new Error(`Error HTTP GET: ${response.status}`);
+      if (!resp.ok) {
+        throw new Error("HTTP Error GET " + resp.status);
       }
-
-      const data = await response.json();
+      const data = await resp.json();
       if (!data.success) {
-        throw new Error(data.error || "Error desconocido en la respuesta GET");
+        throw new Error(data.error || "Error desconocido en GET");
       }
       return data;
-    } catch (error) {
-      console.error(error);
-      mostrarNotificacion(error.message, "error");
+    } catch (err) {
       toggleCargando(false);
-      throw error;
+      mostrarNotificacion(err.message, "error");
+      throw err;
     }
   }
 
-  // Cargar entidades y tipos (GET)
+  // Carga entidades y tipos de producto
   async function cargarEntidadesYTipos() {
-    // Llama a doGet con accion=cargarEntidadesYTipos
     const data = await getData({ accion: "cargarEntidadesYTipos" });
     entidades = data.entidades || [];
     tiposProducto = data.tiposProducto || [];
-    datosEntidadesCargados = true;
+    datosCargados = true;
+    mostrarNotificacion("Datos iniciales cargados", "success");
     return { entidades, tiposProducto };
   }
 
+  function getEntidades() { return entidades; }
+  function getTiposProducto() { return tiposProducto; }
+  function isDatosCargados() { return datosCargados; }
+
   // Guardar contrato
-  async function guardarContrato(datosContrato) {
-    const payload = { accion: 'guardarContrato' };
-    // Copiamos cada propiedad excepto 'detalles'
-    Object.keys(datosContrato).forEach(key => {
-      if (key !== 'detalles') {
-        payload[key] = datosContrato[key];
+  async function guardarContrato(datos) {
+    // datos debe incluir: folio, fecha, nombreDeudor, etc., más "detalles" (en JSON)
+    const payload = { accion: "guardarContrato" };
+    Object.keys(datos).forEach(k => {
+      if (k !== "detalles") {
+        payload[k] = datos[k];
       }
     });
-    // Detalles en JSON
-    if (datosContrato.detalles) {
-      payload.detalles = JSON.stringify(datosContrato.detalles);
+    if (datos.detalles) {
+      payload.detalles = JSON.stringify(datos.detalles);
     }
-    return await postData(payload, "Guardando contrato...", "Contrato guardado correctamente");
+    return await postData(payload, "Guardando contrato...", "Contrato guardado");
   }
 
   // Guardar historial
-  async function guardarHistorial(datosContrato) {
-    const payload = { accion: 'guardarHistorial' };
-    Object.keys(datosContrato).forEach(key => {
-      if (key !== 'detalles') {
-        payload[key] = datosContrato[key];
+  async function guardarHistorial(datos) {
+    const payload = { accion: "guardarHistorial" };
+    Object.keys(datos).forEach(k => {
+      if (k !== "detalles") {
+        payload[k] = datos[k];
       }
     });
-    return await postData(payload, "Guardando en historial...", "Historial guardado correctamente");
+    return await postData(payload, "Guardando historial...", "Historial guardado");
   }
 
-  // Obtener historial (GET)
+  // Obtener historial
   async function obtenerHistorial() {
-    // Llama a doPost con accion=obtenerHistorial
-    // (Podrías también hacerlo GET si adaptas tu doGet)
-    const payload = { accion: "obtenerHistorial" };
-    const data = await postData(payload, "Cargando historial...");
-    // data.historial debería existir
+    const data = await postData({ accion: "obtenerHistorial" }, "Cargando historial...");
     return data.historial || [];
   }
 
-  // Obtener detalles de un contrato (POST o GET)
+  // Obtener detalles de un contrato
   async function obtenerDetallesContrato(folio) {
-    const payload = { accion: "obtenerDetallesContrato", folio };
-    const data = await postData(payload, "Cargando detalles...");
-    return data; // { contrato: {}, detalles: [] }
+    const data = await postData({ accion: "obtenerDetallesContrato", folio }, "Cargando detalles...");
+    return data; // { contrato: {...}, detalles: [...] }
   }
 
-  // Retornar funciones públicas
   return {
     cargarEntidadesYTipos,
+    getEntidades,
+    getTiposProducto,
+    isDatosCargados,
     guardarContrato,
     guardarHistorial,
     obtenerHistorial,
-    obtenerDetallesContrato,
-    getEntidades: () => entidades,
-    getTiposProducto: () => tiposProducto,
-    isDatosCargados: () => datosEntidadesCargados
+    obtenerDetallesContrato
   };
 })();
 
 /***************************************************************************************
- * SimuladorModule
- * Encargado de la lógica principal de la página (DOM, cálculos, etc.)
+ * 3. SIMULADOR MODULE
  ***************************************************************************************/
 const SimuladorModule = (function() {
-  // Referencias a elementos del DOM
   const btnAgregarFila     = document.getElementById("btnAgregarFila");
   const btnCalcular        = document.getElementById("btnCalcular");
   const btnReAnalizar      = document.getElementById("btnReAnalizar");
+  const btnMostrarHistorial= document.getElementById("btnMostrarHistorial");
   const tablaDeudas        = document.getElementById("tablaDeudas");
   const nombreDeudorInput  = document.getElementById("nombreDeudor");
-  const dniClienteInput    = document.getElementById("dniCliente");
   const numCuotasInput     = document.getElementById("numCuotas");
   const resultadoFinal     = document.getElementById("resultadoFinal");
   const resultadoTotalAPagar = document.getElementById("resultadoTotalAPagar");
 
   let contadorFilas = 0;
-  let resultadoCalculado = null;
+  let calculoResultado = null;
 
-  // Inicializar
   async function inicializar() {
-    // Eventos
+    // Listeners
     btnAgregarFila.addEventListener("click", () => {
-      btnAgregarFila.classList.add("clicked");
-      setTimeout(() => btnAgregarFila.classList.remove("clicked"), 200);
       agregarFila();
     });
-
     btnCalcular.addEventListener("click", () => {
-      btnCalcular.classList.add("clicked");
-      setTimeout(() => btnCalcular.classList.remove("clicked"), 200);
       calcularTotales();
     });
-
     btnReAnalizar.addEventListener("click", () => {
-      btnReAnalizar.classList.add("clicked");
-      setTimeout(() => btnReAnalizar.classList.remove("clicked"), 200);
-      reAnalizar();
+      reiniciar();
+    });
+    btnMostrarHistorial.addEventListener("click", () => {
+      HistorialModule.mostrarHistorial();
     });
 
     // Agregar una fila inicial
     agregarFila();
 
-    // Cargar entidades y tipos de producto si no están cargados
+    // Cargar datos de entidades y tipos de producto si no están ya
     if (!GoogleSheetsModule.isDatosCargados()) {
       try {
         await GoogleSheetsModule.cargarEntidadesYTipos();
         actualizarSelectoresEnFilas();
-      } catch (error) {
-        console.error("Error al cargar entidades/tipos:", error);
+      } catch (err) {
+        console.error("Error al cargar datos iniciales:", err);
       }
     } else {
       actualizarSelectoresEnFilas();
     }
   }
 
-  // Actualizar los <select> de tipo de producto y entidad en cada fila
-  function actualizarSelectoresEnFilas() {
-    const filas = tablaDeudas.querySelectorAll("tr");
-    filas.forEach(fila => {
-      const selectorTipoProducto = fila.querySelector(".selector-tipo-producto");
-      const selectorEntidad = fila.querySelector(".selector-entidad");
-      if (selectorTipoProducto) {
-        actualizarSelector(selectorTipoProducto, GoogleSheetsModule.getTiposProducto());
-      }
-      if (selectorEntidad) {
-        actualizarSelector(selectorEntidad, GoogleSheetsModule.getEntidades());
-      }
-    });
-  }
-
-  // Actualizar un <select> con opciones
-  function actualizarSelector(selector, opciones) {
-    const valorActual = selector.value;
-    selector.innerHTML = "";
-    const opcionDefecto = document.createElement("option");
-    opcionDefecto.value = "";
-    opcionDefecto.textContent = "Seleccionar...";
-    selector.appendChild(opcionDefecto);
-
-    opciones.forEach(op => {
-      const opt = document.createElement("option");
-      opt.value = op;
-      opt.textContent = op;
-      selector.appendChild(opt);
-    });
-
-    if (valorActual && opciones.includes(valorActual)) {
-      selector.value = valorActual;
-    }
-  }
-
-  // Agregar fila a la tabla
   function agregarFila() {
     contadorFilas++;
-    const fila = document.createElement("tr");
-    fila.dataset.id = contadorFilas;
+    const tr = document.createElement("tr");
+    tr.dataset.id = contadorFilas;
 
-    // Celda Número de Contrato
-    const tdContrato = document.createElement("td");
+    // Número de contrato
+    const tdNumContrato = document.createElement("td");
     const inputContrato = document.createElement("input");
     inputContrato.type = "text";
-    inputContrato.className = "input-numero-contrato";
     inputContrato.placeholder = "Ej: 123456";
-    tdContrato.appendChild(inputContrato);
+    tdNumContrato.appendChild(inputContrato);
 
-    // Celda Tipo de Producto
+    // Tipo de Producto
     const tdTipo = document.createElement("td");
     const selectTipo = document.createElement("select");
-    selectTipo.className = "selector-tipo-producto";
-    actualizarSelector(selectTipo, GoogleSheetsModule.getTiposProducto());
     tdTipo.appendChild(selectTipo);
 
-    // Celda Entidad
+    // Entidad
     const tdEntidad = document.createElement("td");
     const selectEnt = document.createElement("select");
-    selectEnt.className = "selector-entidad";
-    actualizarSelector(selectEnt, GoogleSheetsModule.getEntidades());
     tdEntidad.appendChild(selectEnt);
 
-    // Celda Importe Deuda
+    // Importe Deuda
     const tdImporte = document.createElement("td");
     const inputImporte = document.createElement("input");
     inputImporte.type = "number";
-    inputImporte.className = "input-importe-deuda";
     inputImporte.placeholder = "Ej: 5000";
     inputImporte.min = "0";
     inputImporte.step = "0.01";
     tdImporte.appendChild(inputImporte);
 
-    // Celda Porcentaje Descuento
-    const tdDescuento = document.createElement("td");
+    // % Descuento
+    const tdDesc = document.createElement("td");
     const inputDesc = document.createElement("input");
     inputDesc.type = "number";
-    inputDesc.className = "input-porcentaje-descuento";
     inputDesc.placeholder = "Ej: 30";
     inputDesc.min = "0";
     inputDesc.max = "100";
     inputDesc.addEventListener("input", function() {
       const fila = this.closest("tr");
-      const imp = parseFloat(fila.querySelector(".input-importe-deuda").value) || 0;
+      const imp = parseFloat(fila.querySelector("td:nth-child(4) input").value) || 0;
       const porc = parseFloat(this.value) || 0;
       if (porc < 0 || porc > 100) {
-        mostrarNotificacion("El porcentaje debe estar entre 0 y 100", "error");
+        mostrarNotificacion("Porcentaje entre 0 y 100", "error");
         this.value = Math.max(0, Math.min(100, porc));
       }
-      const desc = imp * (1 - porc / 100);
-      fila.querySelector(".input-importe-con-descuento").value = desc.toFixed(2);
+      const desc = imp * (1 - (porc / 100));
+      fila.querySelector("td:nth-child(6) input").value = desc.toFixed(2);
     });
-    tdDescuento.appendChild(inputDesc);
+    tdDesc.appendChild(inputDesc);
 
-    // Celda Importe Con Descuento
-    const tdImporteDesc = document.createElement("td");
+    // Importe con descuento
+    const tdImpDesc = document.createElement("td");
     const inputImpDesc = document.createElement("input");
     inputImpDesc.type = "number";
-    inputImpDesc.className = "input-importe-con-descuento";
     inputImpDesc.placeholder = "Ej: 3500";
     inputImpDesc.min = "0";
     inputImpDesc.step = "0.01";
-    tdImporteDesc.appendChild(inputImpDesc);
+    tdImpDesc.appendChild(inputImpDesc);
 
-    // Celda Eliminar
+    // Botón eliminar fila
     const tdEliminar = document.createElement("td");
     const btnEliminar = document.createElement("button");
     btnEliminar.textContent = "Eliminar";
-    btnEliminar.className = "btn-eliminar-fila";
-    btnEliminar.addEventListener("click", function() {
-      this.classList.add("clicked");
-      setTimeout(() => this.classList.remove("clicked"), 200);
-      fila.remove();
+    btnEliminar.addEventListener("click", () => {
+      tr.remove();
     });
     tdEliminar.appendChild(btnEliminar);
 
-    // Adjuntar celdas
-    fila.appendChild(tdContrato);
-    fila.appendChild(tdTipo);
-    fila.appendChild(tdEntidad);
-    fila.appendChild(tdImporte);
-    fila.appendChild(tdDescuento);
-    fila.appendChild(tdImporteDesc);
-    fila.appendChild(tdEliminar);
+    tr.appendChild(tdNumContrato);
+    tr.appendChild(tdTipo);
+    tr.appendChild(tdEntidad);
+    tr.appendChild(tdImporte);
+    tr.appendChild(tdDesc);
+    tr.appendChild(tdImpDesc);
+    tr.appendChild(tdEliminar);
 
-    // Agregar al tbody
-    tablaDeudas.querySelector("tbody").appendChild(fila);
+    tablaDeudas.appendChild(tr);
+
+    // Actualizar los selectores con entidades y tipos
+    actualizarSelector(selectTipo, GoogleSheetsModule.getTiposProducto());
+    actualizarSelector(selectEnt, GoogleSheetsModule.getEntidades());
   }
 
-  // Calcular totales
-  function calcularTotales() {
-    // Validar DNI
-    if (!validarDNI(dniClienteInput.value)) {
-      mostrarNotificacion("El DNI no es válido. Verifique antes de continuar.", "error");
-      return;
-    }
-    const filas = tablaDeudas.querySelectorAll("tbody tr");
-    let totalOriginal = 0;
-    let totalConDescuento = 0;
+  function actualizarSelectoresEnFilas() {
+    const filas = tablaDeudas.querySelectorAll("tr");
     filas.forEach(fila => {
-      const imp = parseFloat(fila.querySelector(".input-importe-deuda").value) || 0;
-      const impDesc = parseFloat(fila.querySelector(".input-importe-con-descuento").value) || 0;
-      totalOriginal += imp;
-      totalConDescuento += impDesc;
+      const selectTipo = fila.querySelector("td:nth-child(2) select");
+      const selectEnt = fila.querySelector("td:nth-child(3) select");
+      if (selectTipo) {
+        actualizarSelector(selectTipo, GoogleSheetsModule.getTiposProducto());
+      }
+      if (selectEnt) {
+        actualizarSelector(selectEnt, GoogleSheetsModule.getEntidades());
+      }
     });
-    const cuotas = parseInt(numCuotasInput.value, 10) || 1;
-    const pagoPorCuota = totalConDescuento / cuotas;
+  }
 
-    resultadoCalculado = {
-      nombreDeudor : nombreDeudorInput.value,
-      dniCliente   : dniClienteInput.value,
+  function actualizarSelector(select, opciones) {
+    const valorAnterior = select.value;
+    select.innerHTML = "";
+    const optDefault = document.createElement("option");
+    optDefault.value = "";
+    optDefault.textContent = "Seleccionar...";
+    select.appendChild(optDefault);
+
+    opciones.forEach(op => {
+      const o = document.createElement("option");
+      o.value = op;
+      o.textContent = op;
+      select.appendChild(o);
+    });
+
+    if (valorAnterior && opciones.includes(valorAnterior)) {
+      select.value = valorAnterior;
+    }
+  }
+
+  function calcularTotales() {
+    const filas = tablaDeudas.querySelectorAll("tr");
+    let totalOriginal = 0;
+    let totalDescontado = 0;
+
+    filas.forEach(fila => {
+      const imp = parseFloat(fila.querySelector("td:nth-child(4) input").value) || 0;
+      const impDesc = parseFloat(fila.querySelector("td:nth-child(6) input").value) || 0;
+      totalOriginal += imp;
+      totalDescontado += impDesc;
+    });
+
+    const cuotas = parseInt(numCuotasInput.value, 10) || 1;
+    const pagoCuota = totalDescontado / cuotas;
+
+    calculoResultado = {
+      nombreDeudor: nombreDeudorInput.value || "Cliente",
       totalOriginal,
-      totalConDescuento,
+      totalDescontado,
+      ahorro: totalOriginal - totalDescontado,
       cuotas,
-      pagoPorCuota
+      pagoCuota
     };
 
-    resultadoFinal.textContent = `
-      Deudor: ${resultadoCalculado.nombreDeudor} 
-      | DNI: ${resultadoCalculado.dniCliente} 
-      | Total Original: ${formatoMoneda(totalOriginal)} 
-      | Ahorro: ${formatoMoneda(totalOriginal - totalConDescuento)}
-    `;
+    // Mostrar resultado
     resultadoTotalAPagar.textContent = `
-      Total a Pagar: ${formatoMoneda(totalConDescuento)} 
-      en ${cuotas} cuotas de ${formatoMoneda(pagoPorCuota)}
+      Deudor: ${calculoResultado.nombreDeudor} |
+      Total Original: ${formatoMoneda(totalOriginal)} |
+      Ahorro: ${formatoMoneda(calculoResultado.ahorro)} |
+      Pagas: ${formatoMoneda(totalDescontado)} en ${cuotas} cuotas de ${formatoMoneda(pagoCuota)}
     `;
-    mostrarNotificacion("Cálculo realizado correctamente", "success");
+    resultadoFinal.style.display = "block";
+
+    mostrarNotificacion("Cálculo realizado", "success");
   }
 
-  // Re-analizar (demo)
-  function reAnalizar() {
-    if (!resultadoCalculado) {
-      mostrarNotificacion("No hay datos para re-analizar", "error");
-      return;
-    }
-    console.log("Re-analizando...", resultadoCalculado);
-    mostrarNotificacion("Re-análisis completado", "info");
+  function reiniciar() {
+    // Limpia tabla
+    tablaDeudas.innerHTML = "";
+    // Agrega fila inicial
+    agregarFila();
+    // Oculta resultado
+    resultadoFinal.style.display = "none";
+    mostrarNotificacion("Reiniciado", "info");
   }
 
-  // Retornamos para que se pueda inicializar desde fuera
   return {
-    inicializar
+    inicializar,
+    getCalculoResultado: () => calculoResultado
   };
 })();
 
 /***************************************************************************************
- * Inicializar el módulo al cargar el DOM
+ * 4. HISTORIAL MODULE
  ***************************************************************************************/
-document.addEventListener("DOMContentLoaded", () => {
+const HistorialModule = (function() {
+  const historialContainer = document.getElementById("historialContainer");
+  const btnCerrarHistorial = document.getElementById("btnCerrarHistorial");
+  const historialBody      = document.getElementById("historialBody");
+
+  function inicializar() {
+    if (btnCerrarHistorial) {
+      btnCerrarHistorial.addEventListener("click", () => {
+        historialContainer.style.display = "none";
+      });
+    }
+  }
+
+  async function mostrarHistorial() {
+    try {
+      const data = await GoogleSheetsModule.obtenerHistorial();
+      // Limpia el tbody
+      historialBody.innerHTML = "";
+      data.forEach(reg => {
+        // reg tendrá las columnas según encabezados
+        const tr = document.createElement("tr");
+        const folio = reg.Folio || "";
+        tr.innerHTML = `
+          <td>${folio}</td>
+          <td>${reg.Fecha || ""}</td>
+          <td>${reg["Nombre Deudor"] || ""}</td>
+          <td>${reg["Número Deudas"] || ""}</td>
+          <td>${reg["Deuda Original"] || ""}</td>
+          <td>${reg["Deuda Descontada"] || ""}</td>
+          <td>${reg["Ahorro"] || ""}</td>
+          <td>${reg["Total a Pagar"] || ""}</td>
+          <td>
+            <button data-folio="${folio}">Ver</button>
+          </td>
+        `;
+        const btnVer = tr.querySelector("button");
+        btnVer.addEventListener("click", () => {
+          // Cargar detalles del contrato
+          verContrato(folio);
+        });
+
+        historialBody.appendChild(tr);
+      });
+      historialContainer.style.display = "block";
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  async function verContrato(folio) {
+    try {
+      const data = await GoogleSheetsModule.obtenerDetallesContrato(folio);
+      if (!data.contrato) {
+        mostrarNotificacion("No se encontró el contrato", "error");
+        return;
+      }
+      // Podrías mostrar un modal con datos detallados, o llenar el plan actual
+      console.log("Contrato:", data.contrato);
+      console.log("Detalles:", data.detalles);
+      mostrarNotificacion(`Detalles contrato ${folio} en consola`, "info");
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  return {
+    inicializar,
+    mostrarHistorial
+  };
+})();
+
+/***************************************************************************************
+ * 5. PLAN (PDF Y GRÁFICO)
+ ***************************************************************************************/
+const PlanModule = (function() {
+  // Aquí iría la lógica para:
+  // - Rellenar el plan con datos (planContainerOuter, etc.)
+  // - Generar el gráfico (Chart.js)
+  // - Exportar a PDF (html2pdf)
+  // - Botones: #btnDescargarPlan, #btnContratar, #btnEditarContrato
+  // Por brevedad, daremos un ejemplo de inicialización:
+  const planContainer = document.getElementById("planContainerOuter");
+  const btnDescargar  = document.getElementById("btnDescargarPlan");
+  const btnContratar  = document.getElementById("btnContratar");
+  const btnEditar     = document.getElementById("btnEditarContrato");
+  let myChart = null;
+
+  function inicializar() {
+    if (btnDescargar) {
+      btnDescargar.addEventListener("click", () => {
+        descargarPDF();
+      });
+    }
+    if (btnContratar) {
+      btnContratar.addEventListener("click", () => {
+        contratarPlan();
+      });
+    }
+    if (btnEditar) {
+      btnEditar.addEventListener("click", () => {
+        mostrarNotificacion("Funcionalidad de edición pendiente", "info");
+      });
+    }
+  }
+
+  function mostrarPlan(datos) {
+    // datos = { nombreDeudor, totalOriginal, totalDescontado, ahorro, cuotas, pagoCuota }
+    // Rellenar campos:
+    document.getElementById("plan-nombre-deudor").textContent = datos.nombreDeudor;
+    document.getElementById("plan-num-deudas").textContent     = "N/A"; // si lo deseas
+    document.getElementById("plan-deuda-total").textContent    = formatoMoneda(datos.totalOriginal);
+    document.getElementById("plan-folio").textContent          = generarFolioRandom();
+    // etc...
+
+    document.getElementById("plan-lo-que-debes").textContent       = formatoMoneda(datos.totalOriginal);
+    document.getElementById("plan-lo-que-pagarias").textContent    = formatoMoneda(datos.totalDescontado);
+    document.getElementById("plan-ahorro").textContent             = formatoMoneda(datos.ahorro);
+    document.getElementById("plan-duracion").textContent           = datos.cuotas + " meses";
+    document.getElementById("plan-cuota-mensual").textContent      = formatoMoneda(datos.pagoCuota);
+
+    // Mostramos la sección
+    planContainer.style.display = "block";
+
+    // Crear grafico
+    if (!myChart) {
+      const ctx = document.getElementById("myChart");
+      myChart = new Chart(ctx, {
+        type: "doughnut",
+        data: {
+          labels: ["Lo que pagarías", "Te ahorras"],
+          datasets: [{
+            data: [datos.totalDescontado, datos.ahorro]
+          }]
+        },
+        options: { responsive: true }
+      });
+    } else {
+      myChart.data.datasets[0].data = [datos.totalDescontado, datos.ahorro];
+      myChart.update();
+    }
+  }
+
+  function descargarPDF() {
+    // Usa html2pdf
+    const plan = document.getElementById("plan-de-liquidacion");
+    const opt = {
+      margin: 10,
+      filename: 'PlanDeLiquidacion.pdf',
+      html2canvas: {},
+      jsPDF: { unit: 'pt', format: 'a4', orientation: 'portrait' }
+    };
+    html2pdf().from(plan).set(opt).save();
+  }
+
+  function contratarPlan() {
+    mostrarNotificacion("Simulando contratación...", "success");
+    // Aquí podrías guardar los datos en GoogleSheetsModule.guardarContrato
+  }
+
+  return {
+    inicializar,
+    mostrarPlan
+  };
+})();
+
+/***************************************************************************************
+ * 6. INICIALIZACIÓN GLOBAL
+ ***************************************************************************************/
+document.addEventListener("DOMContentLoaded", async () => {
+  // Inicializar módulos
   SimuladorModule.inicializar();
+  HistorialModule.inicializar();
+  PlanModule.inicializar();
 });
