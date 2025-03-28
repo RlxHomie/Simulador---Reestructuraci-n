@@ -93,37 +93,59 @@ const GoogleSheetsModule = (function() {
     }
   }
 
-  async function getData(params = {}) {
-    try {
-      toggleCargando(true);
-      const url = new URL(GOOGLE_SHEET_ENDPOINT);
-      Object.keys(params).forEach(key => url.searchParams.append(key, params[key]));
-      const resp = await fetch(url, { method: 'GET', mode: 'cors' });
-      toggleCargando(false);
-      if (!resp.ok) {
-        throw new Error("HTTP Error GET " + resp.status);
+async function getData(params = {}) {
+  try {
+    toggleCargando(true);
+    const url = new URL(GOOGLE_SHEET_ENDPOINT);
+    Object.keys(params).forEach(key => url.searchParams.append(key, params[key]));
+    
+    // Cambio crítico: añadir redirect: 'follow' y headers
+    const resp = await fetch(url, { 
+      method: 'GET',
+      mode: 'cors',
+      redirect: 'follow',  // ← Obligatorio para Google Apps Script
+      headers: {
+        'Content-Type': 'application/json'  // ← Mejora compatibilidad
       }
-      const data = await resp.json();
-      if (!data.success) {
-        throw new Error(data.error || "Error desconocido en GET");
-      }
-      return data;
-    } catch (err) {
-      toggleCargando(false);
-      mostrarNotificacion(err.message, "error");
-      throw err;
-    }
-  }
+    });
 
-  // Carga entidades y tipos de producto
-  async function cargarEntidadesYTipos() {
+    toggleCargando(false);
+    
+    if (!resp.ok) {
+      throw new Error(`HTTP Error GET ${resp.status} ${resp.statusText}`);
+    }
+
+    const data = await resp.json();
+    
+    if (!data.success) {
+      throw new Error(data.error || "Error desconocido en GET");
+    }
+    
+    return data;
+  } catch (err) {
+    toggleCargando(false);
+    mostrarNotificacion(err.message, "error");
+    throw err;
+  }
+}
+
+// Función mejorada con manejo de errores específico
+async function cargarEntidadesYTipos() {
+  try {
     const data = await getData({ accion: "cargarEntidadesYTipos" });
+    
     entidades = data.entidades || [];
     tiposProducto = data.tiposProducto || [];
     datosCargados = true;
+    
     mostrarNotificacion("Datos iniciales cargados", "success");
     return { entidades, tiposProducto };
+    
+  } catch (err) {
+    mostrarNotificacion("Falló carga inicial: " + err.message, "error");
+    return { entidades: [], tiposProducto: [] };  // Retorna valores por defecto
   }
+}
 
   function getEntidades() { return entidades; }
   function getTiposProducto() { return tiposProducto; }
