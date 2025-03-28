@@ -97,12 +97,15 @@ const GoogleSheetsModule = (function() {
   let datosEntidadesCargados = false;
   
   // Función para cargar entidades y tipos de producto desde Google Sheets
-  function cargarEntidadesYTipos() {
+  function cargarEntidadesYTipos()  {
     return new Promise((resolve, reject) => {
       mostrarNotificacion("Cargando datos desde Google Sheets...", "info");
       toggleCargando(true, "Cargando catálogos...");
       
-      fetch(GOOGLE_SHEET_ENDPOINT)
+      fetch(GOOGLE_SHEET_ENDPOINT, {
+        method: 'GET',
+        mode: 'cors' // Asegurarse de que se permiten solicitudes CORS
+      })
         .then(response => {
           if (!response.ok) {
             throw new Error(`Error de red: ${response.status}`);
@@ -163,7 +166,8 @@ const GoogleSheetsModule = (function() {
       const options = {
         method: 'POST',
         body: formData,
-        redirect: 'follow'
+        redirect: 'follow',
+        mode: 'cors' // Asegurarse de que se permiten solicitudes CORS
       };
       
       // Realizar la petición
@@ -213,7 +217,8 @@ const GoogleSheetsModule = (function() {
       const options = {
         method: 'POST',
         body: formData,
-        redirect: 'follow'
+        redirect: 'follow',
+        mode: 'cors' // Asegurarse de que se permiten solicitudes CORS
       };
       
       // Realizar la petición
@@ -256,7 +261,8 @@ const GoogleSheetsModule = (function() {
       const options = {
         method: 'POST',
         body: formData,
-        redirect: 'follow'
+        redirect: 'follow',
+        mode: 'cors' // Asegurarse de que se permiten solicitudes CORS
       };
       
       // Realizar la petición
@@ -300,7 +306,8 @@ const GoogleSheetsModule = (function() {
       const options = {
         method: 'POST',
         body: formData,
-        redirect: 'follow'
+        redirect: 'follow',
+        mode: 'cors' // Asegurarse de que se permiten solicitudes CORS
       };
       
       // Realizar la petición
@@ -355,7 +362,8 @@ const GoogleSheetsModule = (function() {
       const options = {
         method: 'POST',
         body: formData,
-        redirect: 'follow'
+        redirect: 'follow',
+        mode: 'cors' // Asegurarse de que se permiten solicitudes CORS
       };
       
       // Realizar la petición
@@ -623,6 +631,13 @@ const SimuladorModule = (function() {
     return fila;
   }
   
+  // Función para generar un folio único
+  function generarFolio() {
+    const timestamp = Date.now().toString().slice(-6);
+    const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+    return `FOLIO-${timestamp}${random}`;
+  }
+  
   // Función para calcular totales
   function calcularTotales() {
     // Validar nombre del deudor
@@ -724,13 +739,6 @@ const SimuladorModule = (function() {
     mostrarNotificacion("Cálculo completado correctamente", "success");
   }
   
-  // Función para generar un folio único
-  function generarFolio() {
-    const timestamp = Date.now().toString().slice(-6);
-    const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-    return `FOLIO-${timestamp}${random}`;
-  }
-  
   // Función para re-analizar (limpiar y empezar de nuevo)
   function reAnalizar() {
     // Confirmar acción
@@ -774,6 +782,7 @@ const SimuladorModule = (function() {
     calcularTotales,
     reAnalizar,
     setFolioEditando,
+    generarFolio,
     getResultadoCalculado: () => resultadoCalculado
   };
 })();
@@ -1160,7 +1169,7 @@ const PlanLiquidacionModule = (function() {
     // Confirmar acción
     confirmarAccion("¿Está seguro de querer contratar este plan?", () => {
       // Determinar si es un contrato nuevo o una actualización
-      const esActualizacion = datosContrato.folio.startsWith("FOLIO-") && datosContrato.folio !== generarFolio();
+      const esActualizacion = datosContrato.folio.startsWith("FOLIO-") && datosContrato.folio !== SimuladorModule.generarFolio();
       
       if (esActualizacion) {
         // Actualizar contrato existente
@@ -1289,14 +1298,14 @@ function descargarPlanMejorado() {
   const nombreDeudor = (document.getElementById("plan-nombre-deudor")?.textContent || "Simulacion").trim();
   const folioActual = document.getElementById("plan-folio")?.textContent || "";
   
-  // Crear una copia del elemento para manipularlo sin afectar la visualización
-  const planDivClone = planDiv.cloneNode(true);
-  
   // Asegurarse de que todas las imágenes tengan rutas absolutas
-  const images = planDivClone.querySelectorAll('img');
+  const images = planDiv.querySelectorAll('img');
   images.forEach(img => {
-    if (img.src.startsWith('assets/')) {
-      img.src = window.location.origin + '/' + img.src;
+    // Convertir todas las rutas a absolutas
+    if (!img.src.startsWith('http') ) {
+      const currentUrl = window.location.href;
+      const baseUrl = currentUrl.substring(0, currentUrl.lastIndexOf('/') + 1);
+      img.src = new URL(img.getAttribute('src'), baseUrl).href;
     }
   });
   
@@ -1325,8 +1334,20 @@ function descargarPlanMejorado() {
     }
   };
   
-  // Usar html2pdf directamente con promesas
-  html2pdf().from(planDiv).set(opt).save()
+  // Esperar a que las imágenes se carguen completamente
+  const promises = Array.from(images).map(img => {
+    if (img.complete) return Promise.resolve();
+    return new Promise(resolve => {
+      img.onload = resolve;
+      img.onerror = resolve; // Continuar incluso si hay error
+    });
+  });
+  
+  Promise.all(promises)
+    .then(() => {
+      // Usar html2pdf directamente con promesas
+      return html2pdf().from(planDiv).set(opt).save();
+    })
     .then(() => {
       mostrarNotificacion("PDF descargado correctamente", "success");
       toggleCargando(false);
